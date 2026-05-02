@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Friendster Profile</title>
+    <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body { background: #8eb1e7; font-family: Tahoma, Arial; font-size: 14px; margin: 0; }
+        .header { 
+            background: #0d5ba5; 
+            color: white; 
+            padding: 10px; 
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .header a { color: yellow; text-decoration: none; margin: 0 8px; font-size: 14px; }
+        .container { 
+            width: 100%;
+            max-width: 900px; 
+            margin: 10px auto; 
+            background: white; 
+            border: 1px solid #4b6c9e;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .profile-content {
+            display: flex;
+            flex-wrap: wrap;
+            padding: 10px;
+        }
+        .left-col { 
+            flex: 1 1 200px; 
+            min-width: 200px;
+            padding: 10px;
+        }
+        .right-col { 
+            flex: 2 1 400px; 
+            padding: 10px;
+        }
+        .profile-box { 
+            border: 1px solid #a8c0e3; 
+            margin-bottom: 10px; 
+            padding: 10px; 
+            background: #e8f0fb;
+            border-radius: 4px;
+        }
+        .section-title { 
+            background: #6d8ec7; 
+            color: white; 
+            padding: 5px; 
+            font-weight: bold;
+            margin: -10px -10px 10px -10px;
+            border-radius: 4px 4px 0 0;
+        }
+        .pic { 
+            border: 2px solid #4b6c9e; 
+            width: 100%;
+            max-width: 180px;
+            height: auto;
+            aspect-ratio: 1/1;
+            object-fit: cover;
+            border-radius: 4px;
+        }
+        .link-btn { 
+            display: block; 
+            padding: 8px; 
+            color: #0000EE; 
+            text-decoration: none;
+            border-bottom: 1px dotted #ccc;
+        }
+        .link-btn:active { background: #d0e0f5; }
+        marquee { color: red; font-weight: bold; padding: 5px; }
+        @media (max-width: 600px) {
+            .header a { font-size: 12px; margin: 0 4px; }
+            .left-col, .right-col { flex: 1 1 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <b>friendster</b> | 
+        <a href="profile.html" id="my-profile">My Profile</a> | 
+        <a href="friends.html">Friends</a> | 
+        <a href="inbox.html">Messages</a> | 
+        <a href="settings.html">Edit</a> |
+        <a href="#" onclick="logout()">Logout</a>
+    </div>
+    
+    <div class="container">
+        <marquee id="status-text">Welcome to Friendster!</marquee>
+        
+        <div class="profile-content">
+            <div class="left-col">
+                <div class="profile-box">
+                    <div class="section-title" id="username">Loading...</div>
+                    <img id="profile-pic" src="https://i.imgur.com/8Km9tLL.png" class="pic">
+                    <br><br>
+                    <b>Mood:</b> <span id="mood">...</span><br>
+                    <b>Joined:</b> <span id="joined">...</span>
+                </div>
+                
+                <div class="profile-box" id="actions">
+                    <div class="section-title">Actions</div>
+                    <a id="message-btn" class="link-btn">☺ Send Message</a>
+                    <a id="add-friend-btn" class="link-btn">☺ Add Friend</a>
+                    <a href="testimonials.html" class="link-btn" id="testi-link">☺ Testimonials</a>
+                </div>
+            </div>
+            
+            <div class="right-col">
+                <div class="profile-box">
+                    <div class="section-title">About Me</div>
+                    <div id="about-me">Loading...</div>
+                </div>
+                
+                <div class="profile-box">
+                    <div class="section-title">Friend Space</div>
+                    <div id="top8-friends">Loading friends...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <audio id="bg-music" loop></audio>
+
+<script>
+    const gun = Gun({
+        peers: ['https://gun-manhattan.herokuapp.com/gun'],
+        localStorage: true
+    });
+    const users = gun.get('friendster_users');
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    const profileUser = urlParams.get('user');
+    const myUser = localStorage.getItem('friendster_user');
+    
+    if(!profileUser) window.location.href = 'index.html';
+    if(!myUser) window.location.href = 'signup.html';
+    
+    document.getElementById('my-profile').href = 'profile.html?user=' + myUser;
+    document.getElementById('message-btn').href = 'message.html?user=' + profileUser;
+    document.getElementById('testi-link').href = 'testimonials.html?user=' + profileUser;
+    
+    if(profileUser === myUser) document.getElementById('actions').style.display = 'none';
+    
+    users.get(profileUser).on(data => {
+        if(!data) return document.body.innerHTML = '<h1 style="text-align:center;padding:50px">User not found</h1>';
+        
+        document.title = 'Friendster - ' + data.username;
+        document.getElementById('username').innerText = data.username;
+        document.getElementById('profile-pic').src = data.profilePic;
+        document.getElementById('mood').innerText = data.mood || 'None';
+        document.getElementById('about-me').innerHTML = data.aboutMe || 'No info';
+        document.getElementById('joined').innerText = new Date(data.joined).toLocaleDateString();
+        if(data.status) document.getElementById('status-text').innerText = data.status;
+        
+        if(data.backgroundUrl) document.body.style.backgroundImage = `url('${data.backgroundUrl}')`;
+        if(data.musicUrl) {
+            const audio = document.getElementById('bg-music');
+            audio.src = data.musicUrl;
+        }
+    });
+    
+    document.getElementById('add-friend-btn').onclick = () => {
+        users.get(profileUser).get('requests').get(myUser).put(true);
+        users.get(myUser).get('sent_requests').get(profileUser).put(true);
+        alert('Friend request sent!');
+    };
+    
+    function logout() {
+        localStorage.removeItem('friendster_user');
+        window.location.href = 'signup.html';
+    }
+    
+    // Click page to play music - required sa mobile
+    document.body.onclick = () => {
+        document.getElementById('bg-music').play().catch(e => {});
+    };
+</script>
+</body>
+</html>

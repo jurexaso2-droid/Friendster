@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Friendster - Home</title>
+    <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            background: #8eb1e7;
+            font-family: Tahoma, Arial;
+            font-size: 14px;
+            margin: 0;
+        }
+       .header {
+            background: #0d5ba5;
+            color: white;
+            padding: 10px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            font-weight: bold;
+        }
+       .header a { color: yellow; text-decoration: none; margin: 0 8px; }
+       .container {
+            width: 100%;
+            max-width: 700px;
+            margin: 10px auto;
+            padding: 0 10px;
+        }
+       .post-box {
+            background: white;
+            border: 1px solid #4b6c9e;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+       .section-title {
+            background: #6d8ec7;
+            color: white;
+            padding: 8px;
+            font-weight: bold;
+            margin: -15px -15px 10px -15px;
+            border-radius: 8px 8px 0 0;
+        }
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #999;
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: Tahoma;
+            margin: 5px 0;
+        }
+        textarea { resize: vertical; }
+       .btn {
+            background: #6d8ec7;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            width: 100%;
+        }
+       .btn:active { background: #4b6c9e; }
+       .post {
+            background: white;
+            border: 1px solid #a8c0e3;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            overflow: hidden;
+        }
+       .post-header {
+            background: #e8f0fb;
+            padding: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 1px solid #a8c0e3;
+        }
+       .post-header img {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 1px solid #4b6c9e;
+        }
+       .post-user { font-weight: bold; color: #0d5ba5; }
+       .post-time { font-size: 11px; color: #666; }
+       .post-body { padding: 10px; }
+       .post-img {
+            width: 100%;
+            max-height: 400px;
+            object-fit: cover;
+            border-radius: 4px;
+            margin: 8px 0;
+            border: 1px solid #ccc;
+        }
+       .post-desc { line-height: 1.4; }
+       .post-actions {
+            padding: 8px 10px;
+            border-top: 1px dotted #ccc;
+            font-size: 12px;
+        }
+       .post-actions a { color: #0d5ba5; text-decoration: none; margin-right: 15px; }
+        marquee { color: red; font-weight: bold; padding: 5px 0; }
+       .login-prompt {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            margin-bottom: 15px;
+        }
+        @media (max-width: 600px) {
+           .header a { font-size: 12px; margin: 0 4px; }
+           .container { padding: 0 5px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <b>friendster</b> |
+        <a href="profile.html" id="my-profile">Profile</a> |
+        <a href="friends.html">Friends</a> |
+        <a href="inbox.html">Messages</a> |
+        <a href="#" onclick="logout()">Logout</a>
+    </div>
+
+    <div class="container">
+        <marquee>Welcome to Friendster! Post your latest photos and updates ♡</marquee>
+
+        <div id="login-check"></div>
+
+        <div class="post-box" id="post-form" style="display:none;">
+            <div class="section-title">Post a Bulletin</div>
+            <input type="text" id="photo-url" placeholder="Photo URL: https://i.imgur.com/example.jpg">
+            <textarea id="photo-desc" rows="3" placeholder="What's on your mind? Add a description..."></textarea>
+            <button class="btn" onclick="createPost()">Post Bulletin</button>
+            <small style="color:#666;display:block;margin-top:5px;">Tip: Use Imgur or direct image URLs</small>
+        </div>
+
+        <div class="section-title">Latest Bulletins</div>
+        <div id="bulletin-feed">
+            <div style="text-align:center;padding:20px;color:#666;">Loading bulletins...</div>
+        </div>
+    </div>
+
+<script>
+    const gun = Gun({
+        peers: ['https://gun-manhattan.herokuapp.com/gun'],
+        localStorage: true
+    });
+    const users = gun.get('friendster_users');
+    const bulletins = gun.get('friendster_bulletins');
+    const myUser = localStorage.getItem('friendster_user');
+
+    // Check login
+    if(!myUser) {
+        document.getElementById('login-check').innerHTML = `
+            <div class="login-prompt">
+                <b>Login to post bulletins and interact!</b><br>
+                <a href="login.html" style="color:#0d5ba5;">Login</a> or
+                <a href="signup.html" style="color:#0d5ba5;">Sign Up</a>
+            </div>
+        `;
+    } else {
+        document.getElementById('post-form').style.display = 'block';
+        document.getElementById('my-profile').href = 'profile.html?user=' + myUser;
+    }
+
+    // Create Post
+    function createPost() {
+        if(!myUser) return alert('Login first!');
+
+        const photoUrl = document.getElementById('photo-url').value.trim();
+        const desc = document.getElementById('photo-desc').value.trim();
+
+        if(!photoUrl &&!desc) return alert('Add a photo URL or description');
+
+        users.get(myUser).once(userData => {
+            bulletins.set({
+                username: myUser,
+                userPic: userData.profilePic || 'assets/img/default-avatar.png',
+                photoUrl: photoUrl,
+                description: desc,
+                timestamp: Date.now(),
+                likes: 0
+            });
+
+            document.getElementById('photo-url').value = '';
+            document.getElementById('photo-desc').value = '';
+            alert('Bulletin posted!');
+        });
+    }
+
+    // Load Bulletins Real-time - newest first
+    const renderedPosts = {};
+    bulletins.map().on((data, id) => {
+        if(!data || renderedPosts[id]) return;
+        renderedPosts[id] = true;
+
+        const feed = document.getElementById('bulletin-feed');
+        if(feed.innerHTML.includes('Loading bulletins')) feed.innerHTML = '';
+
+        const postDiv = document.createElement('div');
+        postDiv.className = 'post';
+        postDiv.id = 'post-' + id;
+
+        const timeAgo = getTimeAgo(data.timestamp);
+        const photoHTML = data.photoUrl? `<img src="${data.photoUrl}" class="post-img" onerror="this.style.display='none'">` : '';
+
+        postDiv.innerHTML = `
+            <div class="post-header">
+                <img src="${data.userPic}" onerror="this.src='assets/img/default-avatar.png'">
+                <div>
+                    <div class="post-user"><a href="profile.html?user=${data.username}" style="color:#0d5ba5;text-decoration:none;">${data.username}</a></div>
+                    <div class="post-time">${timeAgo}</div>
+                </div>
+            </div>
+            <div class="post-body">
+                ${photoHTML}
+                <div class="post-desc">${data.description || ''}</div>
+            </div>
+            <div class="post-actions">
+                <a href="#" onclick="likePost('${id}');return false;">♥ Like (<span id="likes-${id}">${data.likes || 0}</span>)</a>
+                <a href="profile.html?user=${data.username}">View Profile</a>
+            </div>
+        `;
+
+        feed.prepend(postDiv);
+    });
+
+    function likePost(postId) {
+        if(!myUser) return alert('Login to like posts');
+        bulletins.get(postId).get('likes').once(likes => {
+            bulletins.get(postId).get('likes').put((likes || 0) + 1);
+        });
+    }
+
+    function getTimeAgo(timestamp) {
+        const seconds = Math.floor((Date.now() - timestamp) / 1000);
+        if(seconds < 60) return 'Just now';
+        if(seconds < 3600) return Math.floor(seconds/60) + 'm ago';
+        if(seconds < 86400) return Math.floor(seconds/3600) + 'h ago';
+        return Math.floor(seconds/86400) + 'd ago';
+    }
+
+    function logout() {
+        localStorage.removeItem('friendster_user');
+        window.location.href = 'login.html';
+    }
+
+    // Update likes real-time
+    bulletins.map().on((data, id) => {
+        if(data && document.getElementById('likes-' + id)) {
+            document.getElementById('likes-' + id).innerText = data.likes || 0;
+        }
+    });
+</script>
+</body>
+</html>
