@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Home - App</title>
+    <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; font-family: 'Poppins', sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { background: #0f172a; color: #f8fafc; margin: 0; padding-bottom: 70px; }
+        .header { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(10px); padding: 15px; position: sticky; top: 0; z-index: 100; text-align: center; font-weight: 700; font-size: 1.2rem; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .container { padding: 15px; max-width: 600px; margin: 0 auto; }
+        .post-box { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; padding: 15px; margin-bottom: 20px; }
+        input, textarea { width: 100%; padding: 12px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; color: white; margin: 5px 0; outline: none; }
+        input:focus, textarea:focus { border-color: #a855f7; }
+        .btn { background: linear-gradient(135deg, #a855f7, #ec4899); color: white; border: none; padding: 12px 20px; border-radius: 12px; cursor: pointer; font-weight: 600; width: 100%; margin-top: 10px; transition: transform 0.1s; }
+        .btn:active { transform: scale(0.98); }
+        .post { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 16px; margin-bottom: 15px; overflow: hidden; }
+        .post-header { padding: 15px; display: flex; align-items: center; gap: 12px; }
+        .post-header img { width: 45px; height: 45px; border-radius: 50%; object-fit: cover; border: 2px solid #a855f7; }
+        .post-user a { font-weight: 600; color: #f8fafc; text-decoration: none; }
+        .post-time { font-size: 0.75rem; color: #94a3b8; }
+        .post-body { padding: 0 15px 15px 15px; }
+        .post-img { width: 100%; border-radius: 12px; margin-bottom: 10px; object-fit: cover; max-height: 400px; }
+        .post-actions { padding: 12px 15px; border-top: 1px solid rgba(255,255,255,0.05); display: flex; gap: 15px; }
+        .post-actions a { color: #ec4899; text-decoration: none; font-weight: 600; font-size: 0.9rem; }
+        
+        /* App Bottom Navigation */
+        .bottom-nav { position: fixed; bottom: 0; width: 100%; background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(15px); display: flex; justify-content: space-around; padding: 10px 0 20px 0; border-top: 1px solid rgba(255,255,255,0.1); z-index: 1000; }
+        .bottom-nav a { color: #94a3b8; text-decoration: none; text-align: center; font-size: 0.75rem; display: flex; flex-direction: column; gap: 4px; }
+        .bottom-nav a.active { color: #ec4899; }
+        .bottom-nav i { font-size: 1.5rem; font-style: normal; }
+    </style>
+</head>
+<body>
+    <div class="header">✨ Feed</div>
+
+    <div class="container">
+        <div id="login-check"></div>
+
+        <div class="post-box" id="post-form" style="display:none;">
+            <input type="text" id="photo-url" placeholder="Paste image URL here...">
+            <textarea id="photo-desc" rows="2" placeholder="What's the vibe?"></textarea>
+            <button class="btn" onclick="createPost()">Post</button>
+        </div>
+
+        <div id="bulletin-feed" style="margin-top: 20px;">
+            <div style="text-align:center;color:#94a3b8;">Loading feed...</div>
+        </div>
+    </div>
+
+    <nav class="bottom-nav">
+        <a href="index.html" class="active"><i>🏠</i>Home</a>
+        <a href="friends.html"><i>👥</i>Friends</a>
+        <a href="inbox.html"><i>💬</i>Chats</a>
+        <a href="profile.html" id="my-profile"><i>👤</i>Profile</a>
+    </nav>
+
+<script>
+    const gun = Gun(['https://gun-manhattan.herokuapp.com/gun']);
+    const users = gun.get('friendster_users');
+    const bulletins = gun.get('friendster_bulletins');
+    const myUser = localStorage.getItem('friendster_user');
+
+    if(myUser) {
+        document.getElementById('post-form').style.display = 'block';
+        document.getElementById('my-profile').href = 'profile.html?user=' + myUser;
+    } else {
+        window.location.href = 'login.html';
+    }
+
+    function createPost() {
+        const photoUrl = document.getElementById('photo-url').value.trim();
+        const desc = document.getElementById('photo-desc').value.trim();
+        if(!photoUrl && !desc) return;
+
+        users.get(myUser).once(userData => {
+            bulletins.set({
+                username: myUser,
+                userPic: userData.profilePic || 'https://i.imgur.com/8Km9tLL.png',
+                photoUrl: photoUrl,
+                description: desc,
+                timestamp: Date.now(),
+                likes: 0
+            });
+            document.getElementById('photo-url').value = '';
+            document.getElementById('photo-desc').value = '';
+        });
+    }
+
+    const renderedPosts = {};
+    bulletins.map().on((data, id) => {
+        if(!data || renderedPosts[id]) return;
+        renderedPosts[id] = true;
+
+        const feed = document.getElementById('bulletin-feed');
+        if(feed.innerHTML.includes('Loading feed')) feed.innerHTML = '';
+
+        const postDiv = document.createElement('div');
+        postDiv.className = 'post';
+        const photoHTML = data.photoUrl ? `<img src="${data.photoUrl}" class="post-img" onerror="this.style.display='none'">` : '';
+
+        postDiv.innerHTML = `
+            <div class="post-header">
+                <img src="${data.userPic}" onerror="this.src='https://i.imgur.com/8Km9tLL.png'">
+                <div>
+                    <div class="post-user"><a href="profile.html?user=${data.username}">${data.username}</a></div>
+                    <div class="post-time">Just now</div>
+                </div>
+            </div>
+            <div class="post-body">
+                ${photoHTML}
+                <div class="post-desc">${data.description || ''}</div>
+            </div>
+            <div class="post-actions">
+                <a href="#" onclick="likePost('${id}');return false;">🔥 <span id="likes-${id}">${data.likes || 0}</span></a>
+            </div>
+        `;
+        feed.prepend(postDiv);
+    });
+
+    function likePost(postId) {
+        bulletins.get(postId).get('likes').once(likes => bulletins.get(postId).get('likes').put((likes || 0) + 1));
+    }
+
+    bulletins.map().on((data, id) => {
+        if(data && document.getElementById('likes-' + id)) document.getElementById('likes-' + id).innerText = data.likes || 0;
+    });
+</script>
+</body>
+</html>

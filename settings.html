@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Edit Profile</title>
+    <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; font-family: 'Poppins', sans-serif; }
+        body { background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; padding-bottom: 80px;}
+        .header { display: flex; align-items: center; margin-bottom: 20px; }
+        .header a { color: #a855f7; text-decoration: none; font-weight: 600; font-size: 1.1rem; }
+        h2 { margin: 0 0 20px 0; font-size: 1.5rem; }
+        .box { background: rgba(255,255,255,0.05); border-radius: 20px; padding: 20px; border: 1px solid rgba(255,255,255,0.1); }
+        .input-group { margin-bottom: 15px; }
+        label { display: block; font-size: 0.85rem; color: #94a3b8; margin-bottom: 5px; }
+        input, textarea { width: 100%; padding: 15px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; color: white; outline: none; }
+        input:focus, textarea:focus { border-color: #ec4899; }
+        .btn { background: linear-gradient(135deg, #a855f7, #ec4899); color: white; border: none; padding: 15px; width: 100%; border-radius: 12px; font-weight: 600; font-size: 1rem; cursor: pointer; margin-top: 10px; }
+        .preview { width: 80px; height: 80px; border-radius: 50%; object-fit: cover; margin-bottom: 10px; border: 2px solid #a855f7; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="#" id="back-profile">← Back</a>
+    </div>
+
+    <h2>Customize Vibes 🎨</h2>
+
+    <div class="box">
+        <img id="pic-preview" class="preview" src="https://i.imgur.com/8Km9tLL.png">
+        
+        <div class="input-group">
+            <label>Avatar URL</label>
+            <input type="text" id="pic-url">
+        </div>
+        
+        <div class="input-group">
+            <label>Background Image URL (Make it aesthetic)</label>
+            <input type="text" id="bg-url">
+        </div>
+        
+        <div class="input-group">
+            <label>Profile Song URL (MP3)</label>
+            <input type="text" id="music-url">
+        </div>
+        
+        <div class="input-group">
+            <label>Status</label>
+            <input type="text" id="status">
+        </div>
+
+        <div class="input-group">
+            <label>Mood</label>
+            <input type="text" id="mood">
+        </div>
+        
+        <div class="input-group">
+            <label>About Me</label>
+            <textarea id="about-me" rows="3"></textarea>
+        </div>
+
+        <button class="btn" onclick="saveAll()">Save Everything</button>
+    </div>
+
+<script>
+    const gun = Gun(['https://gun-manhattan.herokuapp.com/gun']);
+    const myUser = localStorage.getItem('friendster_user');
+    if(!myUser) window.location.href = 'login.html';
+    const user = gun.get('friendster_users').get(myUser);
+    
+    document.getElementById('back-profile').href = 'profile.html?user=' + myUser;
+
+    user.once(data => {
+        if(!data) return;
+        document.getElementById('pic-url').value = data.profilePic || '';
+        document.getElementById('pic-preview').src = data.profilePic || 'https://i.imgur.com/8Km9tLL.png';
+        document.getElementById('bg-url').value = data.backgroundUrl || '';
+        document.getElementById('music-url').value = data.musicUrl || '';
+        document.getElementById('status').value = data.status || '';
+        document.getElementById('about-me').value = data.aboutMe || '';
+        document.getElementById('mood').value = data.mood || '';
+    });
+
+    function saveAll() {
+        user.put({
+            profilePic: document.getElementById('pic-url').value,
+            backgroundUrl: document.getElementById('bg-url').value,
+            musicUrl: document.getElementById('music-url').value,
+            status: document.getElementById('status').value,
+            aboutMe: document.getElementById('about-me').value,
+            mood: document.getElementById('mood').value
+        });
+        alert('Profile updated! ✨');
+        window.location.href = 'profile.html?user=' + myUser;
+    }
+</script>
+</body>
+</html>
