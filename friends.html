@@ -101,7 +101,8 @@
                             <a href="profile.html?user=${friendUser}">${friendUser}</a>
                             <small>${userData.mood || 'Vibing'}</small>
                         </div>
-                        <button class="btn btn-primary" onclick="location.href='message.html?user=${friendUser}'">Chat</button>
+                        <!-- Updated this button to trigger startChat() -->
+                        <button class="btn btn-primary" onclick="startChat('${friendUser}')">Chat</button>
                     </div>
                 `;
             });
@@ -137,11 +138,20 @@
         alert('Request sent! 🚀');
         searchUsers();
     }
+    
     function acceptFriend(fromUser) {
         users.get(myUser).get('friends').get(fromUser).put(true);
         users.get(fromUser).get('friends').get(myUser).put(true);
         users.get(myUser).get('requests').get(fromUser).put(null);
     }
+
+    // NEW FUNCTION: Guarantees the person is added to your inbox database BEFORE redirecting you
+    function startChat(friendUser) {
+        users.get(myUser).get('inbox').get(friendUser).put(true);
+        users.get(friendUser).get('inbox').get(myUser).put(true);
+        window.location.href = 'message.html?user=' + friendUser;
+    }
+
     renderRequests();
     renderFriends();
 </script>
