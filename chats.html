@@ -33,7 +33,8 @@
         .user-info small { color: #94a3b8; font-size: 0.75rem; }
 
         /* Chat Messages Interface */
-        .chat-area { display: flex; flex-direction: column; gap: 10px; padding-bottom: 80px; }
+        .chat-area { padding-bottom: 80px; }
+        .msg-list { display: flex; flex-direction: column; gap: 10px; } /* New class to wrap specific chats */
         .msg-bubble { max-width: 75%; padding: 12px 16px; border-radius: 20px; font-size: 0.9rem; line-height: 1.4; word-wrap: break-word;}
         .msg-sent { background: linear-gradient(135deg, #a855f7, #ec4899); align-self: flex-end; border-bottom-right-radius: 4px; }
         .msg-received { background: #334155; align-self: flex-start; border-bottom-left-radius: 4px; }
@@ -81,9 +82,10 @@
             <img id="chat-header-img" src="https://i.imgur.com/8Km9tLL.png" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">
             <span id="chat-header-name">User</span>
         </div>
-        <div class="container chat-area" id="message-list">
-            <!-- Messages will load here -->
-        </div>
+        
+        <!-- We don't wipe this wrapper anymore. We append individual chat threads inside it. -->
+        <div class="container chat-area" id="chat-wrapper"></div>
+        
         <div class="chat-input-bar" id="chat-input-bar">
             <input type="text" id="msg-input" placeholder="Type a message..." onkeypress="if(event.key === 'Enter') sendMessage()">
             <button onclick="sendMessage()">➤</button>
@@ -102,24 +104,23 @@
     // --- 1. INITIALIZATION ---
     const gun = Gun(['https://gun-manhattan.herokuapp.com/gun']);
     const users = gun.get('friendster_users');
+    const chatsDB = gun.get('friendster_chats'); // Master node for all chats
     const myUser = localStorage.getItem('friendster_user');
     
     if(!myUser) window.location.href = 'login.html';
     document.getElementById('my-profile').href = 'profile.html?user=' + myUser;
 
-    let activeChatUser = null; // Remembers who you are currently chatting with
+    let activeChatUser = null; 
 
-    // --- 2. VIEW SWITCHER (SPA Logic) ---
+    // --- 2. VIEW SWITCHER ---
     function switchView(viewName) {
         document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
         document.getElementById('view-' + viewName).classList.add('active');
 
-        // Update Nav Bar highlights
         document.querySelectorAll('.bottom-nav a').forEach(a => a.classList.remove('active'));
         if(viewName === 'friends') document.getElementById('nav-friends').classList.add('active');
         if(viewName === 'inbox') document.getElementById('nav-inbox').classList.add('active');
 
-        // Hide Bottom Nav when inside a chat to make room for keyboard
         const nav = document.getElementById('main-nav');
         if(viewName === 'message') {
             nav.style.display = 'none';
@@ -129,21 +130,27 @@
         }
     }
 
-    // --- 3. INBOX LOGIC ---
-    users.get(myUser).get('inbox').map().on((data, chatUser) => {
-        if(!data) return;
+    // --- 3. INBOX LOGIC (Fixed Sorting & Duplicates) ---
+    users.get(myUser).get('inbox').map().on((timestamp, chatUser) => {
+        if(!timestamp || !chatUser) return;
         
         const loader = document.getElementById('loading-msg');
         if(loader) loader.remove();
-        
-        if(document.getElementById('inbox-' + chatUser)) return; // Prevent duplicate
 
         users.get(chatUser).once(uData => {
             if(!uData) return;
-            const chatBox = document.createElement('div');
-            chatBox.id = 'inbox-' + chatUser;
-            chatBox.className = 'user-box';
-            chatBox.onclick = () => openChat(chatUser, uData.profilePic);
+            
+            let chatBox = document.getElementById('inbox-' + chatUser);
+            if (!chatBox) {
+                chatBox = document.createElement('div');
+                chatBox.id = 'inbox-' + chatUser;
+                chatBox.className = 'user-box';
+                chatBox.onclick = () => openChat(chatUser, uData.profilePic);
+                document.getElementById('inbox-list').appendChild(chatBox);
+            }
+            
+            // Update time and content
+            chatBox.setAttribute('data-time', timestamp);
             chatBox.innerHTML = `
                 <img src="${uData.profilePic || 'https://i.imgur.com/8Km9tLL.png'}">
                 <div class="user-info">
@@ -151,64 +158,74 @@
                     <small>Tap to view messages</small>
                 </div>
             `;
-            // Add to top of list
-            document.getElementById('inbox-list').prepend(chatBox);
+
+            // Sort so newest chats are on top
+            const list = document.getElementById('inbox-list');
+            Array.from(list.children)
+                .sort((a, b) => (b.getAttribute('data-time') || 0) - (a.getAttribute('data-time') || 0))
+                .forEach(el => list.appendChild(el));
         });
     });
 
     setTimeout(() => {
         const loader = document.getElementById('loading-msg');
-        if(loader) loader.innerHTML = "No messages yet 😢";
+        if(loader && !document.querySelector('.user-box')) loader.innerHTML = "No messages yet 😢";
     }, 2000);
 
-    // --- 4. FRIENDS LOGIC ---
-    users.get(myUser).get('requests').map().on(() => renderRequests());
-    users.get(myUser).get('friends').map().on(() => renderFriends());
-    
-    function renderRequests() {
-        document.getElementById('friend-requests').innerHTML = '';
-        let count = 0;
-        users.get(myUser).get('requests').map().once((data, fromUser) => {
-            if(!data) return;
-            count++;
-            users.get(fromUser).once(userData => {
-                document.getElementById('friend-requests').innerHTML += `
-                    <div class="user-box">
-                        <img src="${userData.profilePic || 'https://i.imgur.com/8Km9tLL.png'}">
-                        <div class="user-info">
-                            <div>${fromUser}</div>
-                            <small>Wants to connect</small>
-                        </div>
-                        <button class="btn btn-primary" onclick="acceptFriend('${fromUser}')">Add</button>
-                    </div>
-                `;
-            });
+    // --- 4. FRIENDS LOGIC (Fixed Flickering DOM) ---
+    let reqCount = 0;
+    users.get(myUser).get('requests').map().on((data, fromUser) => {
+        const reqDivId = 'req-' + fromUser;
+        const existingDiv = document.getElementById(reqDivId);
+        
+        if (!data) { 
+            if (existingDiv) { existingDiv.remove(); reqCount--; document.getElementById('req-count').innerText = reqCount; }
+            return;
+        }
+        
+        if (existingDiv) return;
+        reqCount++;
+        document.getElementById('req-count').innerText = reqCount;
+        
+        const rlist = document.getElementById('friend-requests');
+        if (rlist.innerHTML.includes('Clean!')) rlist.innerHTML = '';
+
+        users.get(fromUser).once(userData => {
+            const div = document.createElement('div');
+            div.id = reqDivId;
+            div.className = 'user-box';
+            div.innerHTML = `
+                <img src="${userData.profilePic || 'https://i.imgur.com/8Km9tLL.png'}">
+                <div class="user-info"><div>${fromUser}</div><small>Wants to connect</small></div>
+                <button class="btn btn-primary" onclick="acceptFriend('${fromUser}')">Add</button>
+            `;
+            rlist.appendChild(div);
         });
-        setTimeout(() => document.getElementById('req-count').innerText = count, 500);
-    }
-    
-    function renderFriends() {
-        document.getElementById('friend-list').innerHTML = '';
-        let count = 0;
-        users.get(myUser).get('friends').map().once((data, friendUser) => {
-            if(!data) return;
-            count++;
-            users.get(friendUser).once(userData => {
-                let pic = userData.profilePic || 'https://i.imgur.com/8Km9tLL.png';
-                document.getElementById('friend-list').innerHTML += `
-                    <div class="user-box">
-                        <img src="${pic}">
-                        <div class="user-info">
-                            <div>${friendUser}</div>
-                            <small>${userData.mood || 'Vibing'}</small>
-                        </div>
-                        <button class="btn btn-primary" onclick="openChat('${friendUser}', '${pic}')">Chat</button>
-                    </div>
-                `;
-            });
+    });
+
+    let friendsCount = 0;
+    users.get(myUser).get('friends').map().on((data, friendUser) => {
+        if (!data || document.getElementById('friend-' + friendUser)) return;
+        
+        friendsCount++;
+        document.getElementById('friend-count').innerText = friendsCount;
+        
+        const flist = document.getElementById('friend-list');
+        if (flist.innerHTML.includes('No friends yet')) flist.innerHTML = '';
+
+        users.get(friendUser).once(userData => {
+            let pic = userData.profilePic || 'https://i.imgur.com/8Km9tLL.png';
+            const div = document.createElement('div');
+            div.id = 'friend-' + friendUser;
+            div.className = 'user-box';
+            div.innerHTML = `
+                <img src="${pic}">
+                <div class="user-info"><div>${friendUser}</div><small>${userData.mood || 'Vibing'}</small></div>
+                <button class="btn btn-primary" onclick="openChat('${friendUser}', '${pic}')">Chat</button>
+            `;
+            flist.appendChild(div);
         });
-        setTimeout(() => document.getElementById('friend-count').innerText = count, 500);
-    }
+    });
 
     function searchUsers() {
         const query = document.getElementById('search-box').value.toLowerCase().trim();
@@ -243,39 +260,60 @@
     function acceptFriend(fromUser) {
         users.get(myUser).get('friends').get(fromUser).put(true);
         users.get(fromUser).get('friends').get(myUser).put(true);
-        users.get(myUser).get('requests').get(fromUser).put(null);
+        users.get(myUser).get('requests').get(fromUser).put(null); // Clears the request
     }
 
-    // --- 5. CHAT LOGIC (Fixes the Inbox Bug!) ---
+    // --- 5. CHAT LOGIC (Fixed Disappearing Messages & Duplicates) ---
     function openChat(chatUser, profilePic) {
         activeChatUser = chatUser;
         document.getElementById('chat-header-name').innerText = chatUser;
         document.getElementById('chat-header-img').src = profilePic || 'https://i.imgur.com/8Km9tLL.png';
-        document.getElementById('message-list').innerHTML = ''; // Clear old chats
         
-        // This line FIXES the missing inbox issue automatically!
-        users.get(myUser).get('inbox').get(chatUser).put(true);
-        users.get(chatUser).get('inbox').get(myUser).put(true);
+        // Hide ALL chat containers
+        document.querySelectorAll('.msg-list').forEach(el => el.style.display = 'none');
+
+        const chatID = [myUser, chatUser].sort().join('_');
+        let chatContainer = document.getElementById('chat-' + chatID);
+
+        // If this chat history doesn't exist yet, build it and attach listener ONCE
+        if (!chatContainer) {
+            chatContainer = document.createElement('div');
+            chatContainer.id = 'chat-' + chatID;
+            chatContainer.className = 'msg-list';
+            document.getElementById('chat-wrapper').appendChild(chatContainer);
+
+            // Listen to the SHARED specific chat instance 
+            chatsDB.get(chatID).map().on((msg, id) => {
+                if(!msg || document.getElementById('msg-' + id)) return;
+                
+                const msgDiv = document.createElement('div');
+                msgDiv.id = 'msg-' + id;
+                msgDiv.className = 'msg-bubble ' + (msg.sender === myUser ? 'msg-sent' : 'msg-received');
+                
+                let timeStr = msg.time ? new Date(msg.time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "";
+                msgDiv.innerHTML = `${msg.text} <div style="font-size: 0.65rem; opacity: 0.7; margin-top: 5px; text-align: ${msg.sender === myUser ? 'right' : 'left'};">${timeStr}</div>`;
+                
+                chatContainer.appendChild(msgDiv);
+
+                // Ensure strict chronological order
+                Array.from(chatContainer.children)
+                    .sort((a, b) => a.id.localeCompare(b.id))
+                    .forEach(el => chatContainer.appendChild(el));
+                
+                // Only scroll if we are actively looking at this exact chat
+                if (activeChatUser === chatUser) window.scrollTo(0, document.body.scrollHeight);
+            });
+        } else {
+            // Un-hide the chat if it's already generated (Prevents the Disappearing Bug)
+            chatContainer.style.display = 'flex';
+            setTimeout(() => window.scrollTo(0, document.body.scrollHeight), 50);
+        }
+
+        // Bumps chat to top of inbox
+        users.get(myUser).get('inbox').get(chatUser).put(Date.now());
+        users.get(chatUser).get('inbox').get(myUser).put(Date.now());
 
         switchView('message');
-        loadMessages();
-    }
-
-    function loadMessages() {
-        if(!activeChatUser) return;
-        
-        // Listen to messages between you and them
-        users.get(myUser).get('chats').get(activeChatUser).map().on((msg, id) => {
-            if(!msg || document.getElementById('msg-' + id)) return;
-            
-            const msgDiv = document.createElement('div');
-            msgDiv.id = 'msg-' + id;
-            msgDiv.className = 'msg-bubble ' + (msg.sender === myUser ? 'msg-sent' : 'msg-received');
-            msgDiv.innerText = msg.text;
-            
-            document.getElementById('message-list').appendChild(msgDiv);
-            window.scrollTo(0, document.body.scrollHeight); // Auto scroll to bottom
-        });
     }
 
     function sendMessage() {
@@ -283,15 +321,16 @@
         const text = input.value.trim();
         if(!text || !activeChatUser) return;
         
-        const msgId = 'm_' + Date.now() + Math.random().toString(36).substr(2, 5);
+        const chatID = [myUser, activeChatUser].sort().join('_');
+        
+        // Put timestamp first in ID to ensure natural sorting
+        const msgId = Date.now() + '_' + Math.random().toString(36).substr(2, 5);
         const msgData = { text: text, sender: myUser, time: Date.now() };
 
-        // Save to Your database
-        users.get(myUser).get('chats').get(activeChatUser).get(msgId).put(msgData);
-        // Save to Their database
-        users.get(activeChatUser).get('chats').get(myUser).get(msgId).put(msgData);
+        // Save to SHARED chat node
+        chatsDB.get(chatID).get(msgId).put(msgData);
         
-        // UPDATE INBOX TIMESTAMPS (Forces them to appear on inbox screens)
+        // UPDATE INBOX TIMESTAMPS
         users.get(myUser).get('inbox').get(activeChatUser).put(Date.now());
         users.get(activeChatUser).get('inbox').get(myUser).put(Date.now());
 
