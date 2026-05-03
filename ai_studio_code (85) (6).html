@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Chat & Friends</title>
+    <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; font-family: 'Poppins', sans-serif; -webkit-tap-highlight-color: transparent;}
+        body { background: #0f172a; color: #f8fafc; margin: 0; padding-bottom: 80px; overflow-x: hidden; }
+        
+        /* Layouts & Views */
+        .view { display: none; animation: fadeIn 0.3s ease; }
+        .view.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .header { padding: 20px; font-weight: 700; font-size: 1.5rem; position: sticky; top:0; background: rgba(15,23,42,0.9); backdrop-filter: blur(10px); z-index: 10; display: flex; align-items: center; gap: 15px;}
+        .container { padding: 15px; max-width: 600px; margin: 0 auto; }
+        
+        /* Buttons & Inputs */
+        .search-box { width: 100%; padding: 15px; background: rgba(255,255,255,0.1); border: none; border-radius: 16px; color: white; font-size: 1rem; margin-bottom: 20px; outline: none;}
+        .search-box:focus { background: rgba(255,255,255,0.15); border: 1px solid #a855f7; }
+        .btn { background: #334155; color: white; border: none; padding: 8px 15px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
+        .btn-primary { background: linear-gradient(135deg, #a855f7, #ec4899); }
+        
+        /* Lists */
+        .section-title { font-weight: 600; color: #a855f7; margin: 20px 0 10px 0; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px;}
+        .user-box { background: rgba(255,255,255,0.03); border-radius: 16px; padding: 12px; margin-bottom: 10px; display: flex; align-items: center; gap: 12px; cursor: pointer;}
+        .user-box img { width: 50px; height: 50px; border-radius: 50%; object-fit: cover; border: 2px solid #334155; }
+        .user-info { flex: 1; }
+        .user-info div { color: white; font-weight: 600; font-size: 1rem; }
+        .user-info small { color: #94a3b8; font-size: 0.75rem; }
+
+        /* Chat Messages Interface */
+        .chat-area { display: flex; flex-direction: column; gap: 10px; padding-bottom: 80px; }
+        .msg-bubble { max-width: 75%; padding: 12px 16px; border-radius: 20px; font-size: 0.9rem; line-height: 1.4; word-wrap: break-word;}
+        .msg-sent { background: linear-gradient(135deg, #a855f7, #ec4899); align-self: flex-end; border-bottom-right-radius: 4px; }
+        .msg-received { background: #334155; align-self: flex-start; border-bottom-left-radius: 4px; }
+        
+        .chat-input-bar { position: fixed; bottom: 0; width: 100%; background: #0f172a; padding: 15px; border-top: 1px solid rgba(255,255,255,0.1); display: flex; gap: 10px; z-index: 1000;}
+        .chat-input-bar input { flex: 1; padding: 12px 20px; border-radius: 30px; border: none; background: #1e293b; color: white; outline: none; }
+        .chat-input-bar button { background: #ec4899; border: none; width: 45px; height: 45px; border-radius: 50%; color: white; font-size: 1.2rem; cursor: pointer; display: flex; align-items: center; justify-content: center;}
+
+        /* Bottom Nav */
+        .bottom-nav { position: fixed; bottom: 0; width: 100%; background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(15px); display: flex; justify-content: space-around; padding: 10px 0 20px 0; border-top: 1px solid rgba(255,255,255,0.1); z-index: 1000; }
+        .bottom-nav a { color: #94a3b8; text-decoration: none; text-align: center; font-size: 0.75rem; display: flex; flex-direction: column; gap: 4px; cursor: pointer;}
+        .bottom-nav a.active { color: #ec4899; }
+        .bottom-nav i { font-size: 1.5rem; font-style: normal; }
+    </style>
+</head>
+<body>
+
+    <!-- ================= INBOX VIEW ================= -->
+    <div id="view-inbox" class="view active">
+        <div class="header">Chats 💬</div>
+        <div class="container" id="inbox-list">
+            <div id="loading-msg" style="text-align:center; padding: 20px; color:#94a3b8;">Loading messages...</div>
+        </div>
+    </div>
+
+    <!-- ================= FRIENDS VIEW ================= -->
+    <div id="view-friends" class="view">
+        <div class="header">Discover 🌍</div>
+        <div class="container">
+            <input type="text" class="search-box" id="search-box" placeholder="Search friends..." onkeyup="searchUsers()">
+            <div id="search-results"></div>
+            
+            <div class="section-title">Friend Requests (<span id="req-count">0</span>)</div>
+            <div id="friend-requests" style="color:#94a3b8; font-size:0.9rem;">Clean! No requests.</div>
+            
+            <div class="section-title">My Squad (<span id="friend-count">0</span>)</div>
+            <div id="friend-list" style="color:#94a3b8; font-size:0.9rem;">No friends yet 😢</div>
+        </div>
+    </div>
+
+    <!-- ================= CHAT / MESSAGE VIEW ================= -->
+    <div id="view-message" class="view">
+        <div class="header">
+            <div onclick="switchView('inbox')" style="cursor:pointer; font-size: 1.2rem; margin-right: 10px;">⬅</div>
+            <img id="chat-header-img" src="https://i.imgur.com/8Km9tLL.png" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">
+            <span id="chat-header-name">User</span>
+        </div>
+        <div class="container chat-area" id="message-list">
+            <!-- Messages will load here -->
+        </div>
+        <div class="chat-input-bar" id="chat-input-bar">
+            <input type="text" id="msg-input" placeholder="Type a message..." onkeypress="if(event.key === 'Enter') sendMessage()">
+            <button onclick="sendMessage()">➤</button>
+        </div>
+    </div>
+
+    <!-- ================= BOTTOM NAVIGATION ================= -->
+    <nav class="bottom-nav" id="main-nav">
+        <a href="index.html"><i>🏠</i>Home</a>
+        <a id="nav-friends" onclick="switchView('friends')"><i>👥</i>Friends</a>
+        <a id="nav-inbox" onclick="switchView('inbox')" class="active"><i>💬</i>Chats</a>
+        <a href="profile.html" id="my-profile"><i>👤</i>Profile</a>
+    </nav>
+
+<script>
+    // --- 1. INITIALIZATION ---
+    const gun = Gun(['https://gun-manhattan.herokuapp.com/gun']);
+    const users = gun.get('friendster_users');
+    const myUser = localStorage.getItem('friendster_user');
+    
+    if(!myUser) window.location.href = 'login.html';
+    document.getElementById('my-profile').href = 'profile.html?user=' + myUser;
+
+    let activeChatUser = null; // Remembers who you are currently chatting with
+
+    // --- 2. VIEW SWITCHER (SPA Logic) ---
+    function switchView(viewName) {
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+        document.getElementById('view-' + viewName).classList.add('active');
+
+        // Update Nav Bar highlights
+        document.querySelectorAll('.bottom-nav a').forEach(a => a.classList.remove('active'));
+        if(viewName === 'friends') document.getElementById('nav-friends').classList.add('active');
+        if(viewName === 'inbox') document.getElementById('nav-inbox').classList.add('active');
+
+        // Hide Bottom Nav when inside a chat to make room for keyboard
+        const nav = document.getElementById('main-nav');
+        if(viewName === 'message') {
+            nav.style.display = 'none';
+        } else {
+            nav.style.display = 'flex';
+            activeChatUser = null; 
+        }
+    }
+
+    // --- 3. INBOX LOGIC ---
+    users.get(myUser).get('inbox').map().on((data, chatUser) => {
+        if(!data) return;
+        
+        const loader = document.getElementById('loading-msg');
+        if(loader) loader.remove();
+        
+        if(document.getElementById('inbox-' + chatUser)) return; // Prevent duplicate
+
+        users.get(chatUser).once(uData => {
+            if(!uData) return;
+            const chatBox = document.createElement('div');
+            chatBox.id = 'inbox-' + chatUser;
+            chatBox.className = 'user-box';
+            chatBox.onclick = () => openChat(chatUser, uData.profilePic);
+            chatBox.innerHTML = `
+                <img src="${uData.profilePic || 'https://i.imgur.com/8Km9tLL.png'}">
+                <div class="user-info">
+                    <div>${chatUser}</div>
+                    <small>Tap to view messages</small>
+                </div>
+            `;
+            // Add to top of list
+            document.getElementById('inbox-list').prepend(chatBox);
+        });
+    });
+
+    setTimeout(() => {
+        const loader = document.getElementById('loading-msg');
+        if(loader) loader.innerHTML = "No messages yet 😢";
+    }, 2000);
+
+    // --- 4. FRIENDS LOGIC ---
+    users.get(myUser).get('requests').map().on(() => renderRequests());
+    users.get(myUser).get('friends').map().on(() => renderFriends());
+    
+    function renderRequests() {
+        document.getElementById('friend-requests').innerHTML = '';
+        let count = 0;
+        users.get(myUser).get('requests').map().once((data, fromUser) => {
+            if(!data) return;
+            count++;
+            users.get(fromUser).once(userData => {
+                document.getElementById('friend-requests').innerHTML += `
+                    <div class="user-box">
+                        <img src="${userData.profilePic || 'https://i.imgur.com/8Km9tLL.png'}">
+                        <div class="user-info">
+                            <div>${fromUser}</div>
+                            <small>Wants to connect</small>
+                        </div>
+                        <button class="btn btn-primary" onclick="acceptFriend('${fromUser}')">Add</button>
+                    </div>
+                `;
+            });
+        });
+        setTimeout(() => document.getElementById('req-count').innerText = count, 500);
+    }
+    
+    function renderFriends() {
+        document.getElementById('friend-list').innerHTML = '';
+        let count = 0;
+        users.get(myUser).get('friends').map().once((data, friendUser) => {
+            if(!data) return;
+            count++;
+            users.get(friendUser).once(userData => {
+                let pic = userData.profilePic || 'https://i.imgur.com/8Km9tLL.png';
+                document.getElementById('friend-list').innerHTML += `
+                    <div class="user-box">
+                        <img src="${pic}">
+                        <div class="user-info">
+                            <div>${friendUser}</div>
+                            <small>${userData.mood || 'Vibing'}</small>
+                        </div>
+                        <button class="btn btn-primary" onclick="openChat('${friendUser}', '${pic}')">Chat</button>
+                    </div>
+                `;
+            });
+        });
+        setTimeout(() => document.getElementById('friend-count').innerText = count, 500);
+    }
+
+    function searchUsers() {
+        const query = document.getElementById('search-box').value.toLowerCase().trim();
+        const resultsDiv = document.getElementById('search-results');
+        if(query.length < 2) return resultsDiv.innerHTML = '';
+        
+        resultsDiv.innerHTML = '<div class="section-title">Results</div>';
+        users.map().once((data, username) => {
+            if(username.includes(query) && username !== myUser) {
+                users.get(myUser).get('friends').get(username).once(isFriend => {
+                    let btnHTML = isFriend ? '<button class="btn">Friends</button>' : `<button class="btn btn-primary" onclick="sendRequest('${username}')">Add</button>`;
+                    resultsDiv.innerHTML += `
+                        <div class="user-box">
+                            <img src="${data.profilePic || 'https://i.imgur.com/8Km9tLL.png'}">
+                            <div class="user-info"><div>${username}</div></div>
+                            ${btnHTML}
+                        </div>
+                    `;
+                });
+            }
+        });
+    }
+
+    function sendRequest(toUser) {
+        users.get(toUser).get('requests').get(myUser).put(true);
+        users.get(myUser).get('sent_requests').get(toUser).put(true);
+        alert('Request sent! 🚀');
+        document.getElementById('search-box').value = '';
+        document.getElementById('search-results').innerHTML = '';
+    }
+
+    function acceptFriend(fromUser) {
+        users.get(myUser).get('friends').get(fromUser).put(true);
+        users.get(fromUser).get('friends').get(myUser).put(true);
+        users.get(myUser).get('requests').get(fromUser).put(null);
+    }
+
+    // --- 5. CHAT LOGIC (Fixes the Inbox Bug!) ---
+    function openChat(chatUser, profilePic) {
+        activeChatUser = chatUser;
+        document.getElementById('chat-header-name').innerText = chatUser;
+        document.getElementById('chat-header-img').src = profilePic || 'https://i.imgur.com/8Km9tLL.png';
+        document.getElementById('message-list').innerHTML = ''; // Clear old chats
+        
+        // This line FIXES the missing inbox issue automatically!
+        users.get(myUser).get('inbox').get(chatUser).put(true);
+        users.get(chatUser).get('inbox').get(myUser).put(true);
+
+        switchView('message');
+        loadMessages();
+    }
+
+    function loadMessages() {
+        if(!activeChatUser) return;
+        
+        // Listen to messages between you and them
+        users.get(myUser).get('chats').get(activeChatUser).map().on((msg, id) => {
+            if(!msg || document.getElementById('msg-' + id)) return;
+            
+            const msgDiv = document.createElement('div');
+            msgDiv.id = 'msg-' + id;
+            msgDiv.className = 'msg-bubble ' + (msg.sender === myUser ? 'msg-sent' : 'msg-received');
+            msgDiv.innerText = msg.text;
+            
+            document.getElementById('message-list').appendChild(msgDiv);
+            window.scrollTo(0, document.body.scrollHeight); // Auto scroll to bottom
+        });
+    }
+
+    function sendMessage() {
+        const input = document.getElementById('msg-input');
+        const text = input.value.trim();
+        if(!text || !activeChatUser) return;
+        
+        const msgId = 'm_' + Date.now() + Math.random().toString(36).substr(2, 5);
+        const msgData = { text: text, sender: myUser, time: Date.now() };
+
+        // Save to Your database
+        users.get(myUser).get('chats').get(activeChatUser).get(msgId).put(msgData);
+        // Save to Their database
+        users.get(activeChatUser).get('chats').get(myUser).get(msgId).put(msgData);
+        
+        // UPDATE INBOX TIMESTAMPS (Forces them to appear on inbox screens)
+        users.get(myUser).get('inbox').get(activeChatUser).put(Date.now());
+        users.get(activeChatUser).get('inbox').get(myUser).put(Date.now());
+
+        input.value = ''; // Clear input field
+    }
+</script>
+</body>
+</html>
