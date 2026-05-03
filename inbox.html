@@ -3,45 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Inbox - Vibe App</title>
+    <title>Inbox</title>
     <script src="https://cdn.jsdelivr.net/npm/gun/gun.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
         * { box-sizing: border-box; font-family: 'Poppins', sans-serif; -webkit-tap-highlight-color: transparent;}
         body { background: #0f172a; color: #f8fafc; margin: 0; padding-bottom: 80px; }
         .header { padding: 20px; font-weight: 700; font-size: 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.1); position: sticky; top:0; background: rgba(15,23,42,0.9); backdrop-filter: blur(10px); z-index: 10;}
-        .container { padding: 15px; max-width: 600px; margin: 0 auto; }
-        
-        .chat-user { 
-            background: rgba(255,255,255,0.03); 
-            margin-bottom: 12px; 
-            border-radius: 16px; 
-            padding: 15px; 
-            display: flex; 
-            align-items: center; 
-            gap: 15px; 
-            cursor: pointer; 
-            transition: background 0.2s, transform 0.1s; 
-            border: 1px solid rgba(255,255,255,0.05);
-        }
-        .chat-user:active { 
-            background: rgba(255,255,255,0.1); 
-            transform: scale(0.98);
-        }
-        .chat-user img { 
-            width: 55px; 
-            height: 55px; 
-            border-radius: 50%; 
-            object-fit: cover; 
-            border: 2px solid #a855f7;
-        }
+        .container { padding: 10px; max-width: 600px; margin: 0 auto; }
+        .chat-user { background: rgba(255,255,255,0.03); margin-bottom: 10px; border-radius: 16px; padding: 15px; display: flex; align-items: center; gap: 15px; cursor: pointer; transition: background 0.2s; }
+        .chat-user:active { background: rgba(255,255,255,0.1); }
+        .chat-user img { width: 55px; height: 55px; border-radius: 50%; object-fit: cover; }
         .chat-info { flex: 1; }
-        .chat-name { font-weight: 600; font-size: 1.1rem; color: #fff; }
-        .chat-preview { color: #94a3b8; font-size: 0.85rem; margin-top: 2px; }
-        .chat-arrow { color: #a855f7; font-size: 1.2rem; font-weight: bold; }
+        .chat-name { font-weight: 600; font-size: 1.1rem; }
+        .chat-preview { color: #94a3b8; font-size: 0.85rem; }
         
-        #loading-text { text-align:center; padding: 30px; color:#94a3b8; font-size: 0.9rem; }
-
         .bottom-nav { position: fixed; bottom: 0; width: 100%; background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(15px); display: flex; justify-content: space-around; padding: 10px 0 20px 0; border-top: 1px solid rgba(255,255,255,0.1); z-index: 1000; }
         .bottom-nav a { color: #94a3b8; text-decoration: none; text-align: center; font-size: 0.75rem; display: flex; flex-direction: column; gap: 4px; }
         .bottom-nav a.active { color: #ec4899; }
@@ -52,7 +28,8 @@
     <div class="header">Chats 💬</div>
     
     <div class="container" id="inbox-list">
-        <div id="loading-text">Loading messages... ✨</div>
+        <!-- Added an ID to the loading text so we can remove it safely -->
+        <div id="loading-msg" style="text-align:center; padding: 20px; color:#94a3b8;">Loading messages...</div>
     </div>
 
     <nav class="bottom-nav">
@@ -70,48 +47,37 @@
     if(!myUser) window.location.href = 'login.html';
     document.getElementById('my-profile').href = 'profile.html?user=' + myUser;
 
-    const renderedChats = {};
-    let hasChats = false;
-
-    // Use .on() instead of .once() so if you get a new message, it updates automatically!
-    users.get(myUser).get('inbox').map().on((data, chatUser) => {
-        if(!data || renderedChats[chatUser]) return; // Skip if null or already drawn
+    users.get(myUser).get('inbox').map().once((data, chatUser) => {
+        if(!data) return; // Ignore if the data is null/false
         
-        renderedChats[chatUser] = true;
-        hasChats = true;
-
-        // Safely remove the loading text without breaking existing chats
-        const loader = document.getElementById('loading-text');
+        // Remove the loading text safely without deleting chats
+        const loader = document.getElementById('loading-msg');
         if(loader) loader.remove();
-
+        
+        // Check if the chat bubble is already on screen to prevent duplicates
+        if(document.getElementById('chat-' + chatUser)) return;
+        
         users.get(chatUser).once(uData => {
-            // Failsafe in case user data is missing
-            const pic = (uData && uData.profilePic) ? uData.profilePic : 'https://i.imgur.com/8Km9tLL.png';
-            const subtext = (uData && uData.mood) ? uData.mood : 'Tap to open chat';
-
+            if(!uData) return;
             const chatBox = document.createElement('div');
+            chatBox.id = 'chat-' + chatUser; // Assign an ID to track duplicates
             chatBox.className = 'chat-user';
             chatBox.onclick = () => window.location.href = 'message.html?user=' + chatUser;
-            
             chatBox.innerHTML = `
-                <img src="${pic}">
+                <img src="${uData.profilePic || 'https://i.imgur.com/8Km9tLL.png'}">
                 <div class="chat-info">
-                    <div class="chat-name">@${chatUser}</div>
-                    <div class="chat-preview">${subtext}</div>
+                    <div class="chat-name">${chatUser}</div>
+                    <div class="chat-preview">Tap to chat</div>
                 </div>
-                <div class="chat-arrow">➔</div>
             `;
-            
             document.getElementById('inbox-list').appendChild(chatBox);
         });
     });
 
-    // If 2 seconds pass and no chats are found, change the loading text
+    // If the inbox is empty after 2 seconds, show an empty state message
     setTimeout(() => {
-        if(!hasChats) {
-            const loader = document.getElementById('loading-text');
-            if(loader) loader.innerHTML = "It's quiet here. <br><br> Go to <b>Friends</b> to start a chat! 🚀";
-        }
+        const loader = document.getElementById('loading-msg');
+        if(loader) loader.innerHTML = "No messages yet 😢";
     }, 2000);
 </script>
 </body>
